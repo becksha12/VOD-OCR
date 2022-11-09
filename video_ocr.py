@@ -135,6 +135,18 @@ def text_from_boxes(boxes, original_image, ratio_w, ratio_h, orig_w, orig_h):
     return results
 
 
+def display_bounding_boxes(predictions, image, to_display_text=True, save_path='output.png'):
+    output = image.copy()
+    for ((startX, startY, endX, endY), text) in predictions:
+        text = "".join([c if ord(c) < 128 else "" for c in text]).strip()
+        cv2.rectangle(output, (startX, startY), (endX, endY),
+                      (0, 0, 255), 4)
+        if to_display_text:
+            cv2.putText(output, text, (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+    # show the output image
+    cv2.imwrite(save_path, output)
+
+
 def main():
     FILE_PATH = './data/beast_peacock-ss_1.png'
     frame_counter = 0
@@ -151,6 +163,7 @@ def main():
     boxes = get_bounding_boxes(resized_image, model, r_w, r_h)
     text_predictions = text_from_boxes(boxes, orig_image, ratio_w, ratio_h, o_w, o_h)
     print(text_predictions)
+    display_bounding_boxes(text_predictions, orig_image, False)
 
 
 if __name__ == '__main__':
