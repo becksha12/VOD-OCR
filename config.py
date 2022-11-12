@@ -6,6 +6,7 @@ MODEL_PATH = './models/frozen_east_text_detection.pb'
 IMAGE_TO_STRING_CONFIG_OPTIONS = "-l eng --oem 1 --psm 7"
 EAST_IMAGE_WIDTH = 512
 EAST_IMAGE_HEIGHT = 512
-MIN_CONFIDENCE = 0.5
+MIN_CONFIDENCE = 0.2
+KEYBOARD_TEMPLATE_CORR_THRESHOLD = 10.5
 
 # Download the EAST model from here: https://github.com/sanifalimomin/Text-Detection-Using-OpenCV/blob/main/frozen_east_text_detection.pb
