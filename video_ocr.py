@@ -55,19 +55,6 @@ def decode_predictions(scores, geometry, min_confidence):
     # return a tuple of the bounding boxes and associated confidences
     return rects, confidences
 
-
-def get_frame_for_every_second(video_path):
-    vid_ob = cv2.VideoCapture(video_path)
-    frame_rate = vid_ob.get(5)
-    while vid_ob.isOpened():
-        frame_id = vid_ob.get(1)
-        ret, frame = vid_ob.read()
-        if ret:
-          if frame_id % math.floor(frame_rate) == 0:
-              yield frame
-    vid_ob.release()
-
-
 def get_text(image):
     return pytesseract.image_to_string(image)
 
@@ -162,6 +149,7 @@ def main():
     (orig_image, o_h, o_w), (resized_image, r_h, r_w), (ratio_h, ratio_w) = resize_image(image, config.EAST_IMAGE_WIDTH, config.EAST_IMAGE_HEIGHT)
     boxes = get_bounding_boxes(resized_image, model, r_w, r_h)
     text_predictions = text_from_boxes(boxes, orig_image, ratio_w, ratio_h, o_w, o_h)
+    print(len(text_predictions))
     print(text_predictions)
     display_bounding_boxes(text_predictions, orig_image, False)
 
