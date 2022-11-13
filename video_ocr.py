@@ -122,7 +122,7 @@ def text_from_boxes(boxes, original_image, ratio_w, ratio_h, orig_w, orig_h):
     return results
 
 
-def display_bounding_boxes(predictions, image, to_display_text=True, save_path='output.png'):
+def display_bounding_boxes(predictions, image, to_display_text=True, to_diplay_coordinates=False, save_path='output.png'):
     output = image.copy()
     for ((startX, startY, endX, endY), text) in predictions:
         text = "".join([c if ord(c) < 128 else "" for c in text]).strip()
@@ -130,6 +130,9 @@ def display_bounding_boxes(predictions, image, to_display_text=True, save_path='
                       (0, 0, 255), 4)
         if to_display_text:
             cv2.putText(output, text, (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+        if to_diplay_coordinates:
+            cv2.putText(output, str((startX, startY)), (startX + 20, startY + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
+            cv2.putText(output, str((endX, endY)), (endX - 20, endY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
     # show the output image
     cv2.imwrite(save_path, output)
 
