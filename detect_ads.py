@@ -6,7 +6,10 @@ import pytesseract
 
 AD_CIRCLE_COLOR_BOUNDARY_ORANGE = ([66, 123, 205], [77, 133, 252])
 AD_CIRCLE_COLOR_BOUNDARY_GRAY = [(50, 50, 50), [52, 52, 52]]
+PLAYBAR_COLOR_BOUNDARY_WHITE = ([253, 253, 253], [255, 255, 255])
+PLAYBAR_COLOR_BOUNDARY_GRAY = ([75, 75, 75], [77, 77, 77])
 DIGIT_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789'
+
 
 def read_image(image_path):
     return cv2.imread(image_path)
@@ -72,7 +75,14 @@ def detect_ad_time(window, apply_thresholding=True):
     return pytesseract.image_to_string(window, lang='eng', config=DIGIT_DETECTION_CONFIG)
 
 
-def main():
+def detect_playbar(image, color_boundary_gray, color_boundary_white):
+    gray_mask = detect_color_mask(image, color_boundary_gray)
+    white_mask = detect_color_mask(image, color_boundary_white)
+    mask = cv2.bitwise_xor(gray_mask, white_mask)
+    return mask
+
+
+def main_timer_detection():
     IMAGE_PATH_0 = './data/add.PNG'
     IMAGE_PATH_1 = './data/add-ex-1.PNG'
     IMAGE_PATH_2 = './data/add-ex-2.PNG'
@@ -90,8 +100,36 @@ def main():
         print('Not an Ad')
 
 
+def get_lowest_horizontal_line(lines):
+    lines = lines.squeeze(1).tolist()
+    lines.sort(key=lambda x: x[1], reverse=True)
+    max_y_coordinate = lines[0][1]
+    lowest_lines = list(filter(lambda l: l[1] == max_y_coordinate, lines))
+    min_x = min([l[0] for l in lowest_lines])
+    max_x = max([l[2] for l in lowest_lines])
+    return (min_x, max_y_coordinate), (max_x, max_y_coordinate)
+
+
+def get_playbar_coordinates(playbar_mask):
+    edges = cv2.Canny(playbar_mask, 80, 120)
+    # lines1 = cv2.HoughLinesP(playbar_mask, rho=1, theta=math.pi / 2, threshold=200)
+    lines2 = cv2.HoughLinesP(edges, rho=1, theta=math.pi / 2, threshold=70, minLineLength=1000)
+    lowest_horizontal_line = get_lowest_horizontal_line(lines2)
+    return lowest_horizontal_line
+
+
+def main_playbar_ads_detection():
+    IMAGE_1 = './data/get_add.PNG'
+    IMAGE_2 = './data/add-break-1.PNG'
+    image = read_image(IMAGE_1)
+    mask = detect_playbar(image, PLAYBAR_COLOR_BOUNDARY_GRAY, PLAYBAR_COLOR_BOUNDARY_WHITE)
+    cv2.imwrite('playbar_mask.png', mask)
+    print(get_playbar_coordinates(mask))
+    # ((33, 704), (1835, 704))
+
+
 if __name__ == '__main__':
-    main()
+    main_playbar_ads_detection()
     # Test pick circles function
     # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5]]])) == [25, 35, 12.5])
     # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5], [25, 100, 12.5], [35, 120, 12.5]]])) == [25, 100, 12.5])
