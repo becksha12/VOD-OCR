@@ -9,6 +9,7 @@ AD_CIRCLE_COLOR_BOUNDARY_GRAY = [(50, 50, 50), [52, 52, 52]]
 PLAYBAR_COLOR_BOUNDARY_WHITE = ([253, 253, 253], [255, 255, 255])
 PLAYBAR_COLOR_BOUNDARY_GRAY = ([75, 75, 75], [77, 77, 77])
 DIGIT_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789'
+TIME_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789/:'
 
 
 def read_image(image_path):
@@ -100,21 +101,68 @@ def main_timer_detection():
         print('Not an Ad')
 
 
-def get_lowest_horizontal_line(lines):
+def get_lowest_horizontal_line(lines, length_threshold):
     lines = lines.squeeze(1).tolist()
-    lines.sort(key=lambda x: x[1], reverse=True)
-    max_y_coordinate = lines[0][1]
-    lowest_lines = list(filter(lambda l: l[1] == max_y_coordinate, lines))
-    min_x = min([l[0] for l in lowest_lines])
-    max_x = max([l[2] for l in lowest_lines])
-    return (min_x, max_y_coordinate), (max_x, max_y_coordinate)
+    groups = dict()
+    for line in lines:
+        if line[1] not in groups:
+            groups[line[1]] = list()
+        groups[line[1]].append(line)
+
+    combined_keys = coalesce(list(groups.keys()))
+    combined_groups = {ck: [] for ck in combined_keys}
+    for key in groups:
+        for cks in combined_keys:
+            if key in cks:
+                combined_groups[cks].extend(groups[key])
+
+    groups = {int(sum(cks)/len(cks)): combined_groups[cks] for cks in combined_groups}
+    print(groups)
+
+    continuous_lines = dict()
+    for key in groups:
+        min_x = min([line[0] for line in groups[key]])
+        max_x = max([line[2] for line in groups[key]])
+        if max_x - min_x >= length_threshold:
+            continuous_lines[key] = (max_x, min_x)
+
+    print(continuous_lines)
+    max_y = max(continuous_lines.keys())
+    max_x, min_x = continuous_lines[max_y]
+    return (min_x, max_y), (max_x, max_y)
+
+
+def get_playback_time_area(image, playbar_x_min, playbar_x_max, playbar_y):
+    area_min_y = playbar_y + 15
+    area_max_y = playbar_y + 45
+    area_max_x = (playbar_x_min + playbar_x_max) // 4
+    area_min_x = playbar_x_min - 25
+    return image[area_min_y:area_max_y, area_min_x:area_max_x]
+
+
+def coalesce(keys, max_difference=3):
+    combined_keys = [[keys[0]]]
+    for key in keys[1:]:
+        to_break = False
+        for combined_key_list in combined_keys:
+            for inner_key in combined_key_list:
+                if abs(inner_key - key) <= max_difference:
+                    combined_key_list.append(key)
+                    to_break = True
+                    break
+            if to_break:
+                break
+        if not to_break:
+            combined_keys.append([key])
+    return [tuple(ck) for ck in combined_keys]
 
 
 def get_playbar_coordinates(playbar_mask):
     edges = cv2.Canny(playbar_mask, 80, 120)
+    edges = playbar_mask
     # lines1 = cv2.HoughLinesP(playbar_mask, rho=1, theta=math.pi / 2, threshold=200)
-    lines2 = cv2.HoughLinesP(edges, rho=1, theta=math.pi / 2, threshold=70, minLineLength=1000)
-    lowest_horizontal_line = get_lowest_horizontal_line(lines2)
+    lines2 = cv2.HoughLinesP(edges, rho=1, theta=math.pi / 2, threshold=70)
+    lowest_horizontal_line = get_lowest_horizontal_line(lines2, 900)
     return lowest_horizontal_line
 
 
@@ -124,12 +172,18 @@ def main_playbar_ads_detection():
     image = read_image(IMAGE_1)
     mask = detect_playbar(image, PLAYBAR_COLOR_BOUNDARY_GRAY, PLAYBAR_COLOR_BOUNDARY_WHITE)
     cv2.imwrite('playbar_mask.png', mask)
-    print(get_playbar_coordinates(mask))
+    (x_min, y1), (x_max, y2) = get_playbar_coordinates(mask)
+    print((x_min, y1), (x_max, y2))
+    timer_area = get_playback_time_area(image, x_min, x_max, y1)
+    print(pytesseract.image_to_string(timer_area, lang='eng', config=TIME_DETECTION_CONFIG))
+    cv2.imwrite('timer_area.png', timer_area)
     # ((33, 704), (1835, 704))
 
 
 if __name__ == '__main__':
     main_playbar_ads_detection()
+    # keys = [701, 700, 704, 702, 703, 699, 217, 215, 207, 216, 303]
+    # print(coalesce(keys))
     # Test pick circles function
     # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5]]])) == [25, 35, 12.5])
     # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5], [25, 100, 12.5], [35, 120, 12.5]]])) == [25, 100, 12.5])
