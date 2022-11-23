@@ -205,7 +205,8 @@ def main_timer_detection():
 def main_playbar_ads_detection():
     IMAGE_1 = './data/get_add.PNG'
     IMAGE_2 = './data/add-break-1.PNG'
-    image = read_image(IMAGE_1)
+    IMAGE_3 = './data/no-ad-breaks.PNG'
+    image = read_image(IMAGE_3)
     mask = detect_playbar(image, PLAYBAR_COLOR_BOUNDARY_GRAY, PLAYBAR_COLOR_BOUNDARY_WHITE)
     coordinates = get_playbar_coordinates(mask)
     if coordinates is not None:
@@ -214,15 +215,19 @@ def main_playbar_ads_detection():
         playtime = pytesseract.image_to_string(timer_area, lang='eng', config=TIME_DETECTION_CONFIG)
         # print(playtime)
         ad_coords = detect_ad_breaks(image, y1)
-        ad_coords.sort(key=lambda x: x[0])
-        # print(ad_coords)
-        hh, mm, ss = parse_playtime(playtime)
-        playtime_in_seconds = hhmmss_to_seconds(hh, mm, ss)
-        for i, (x, y) in enumerate(ad_coords):
-            add_at_point = max(0, fraction_of_total(x, x_min, x_max)) # TODO: adjust the minimum
-            add_at_time = int(add_at_point * playtime_in_seconds)
-            h, m, s = seconds_to_hhmmss(add_at_time)
-            print(f'Add #{i+1} at: {add_at_time}s ({h:02d}:{m:02d}:{s:02d})')
+        if len(ad_coords) != 0:
+            ad_coords.sort(key=lambda x: x[0])
+            print('ad coords:', ad_coords)
+            # print(ad_coords)
+            hh, mm, ss = parse_playtime(playtime)
+            playtime_in_seconds = hhmmss_to_seconds(hh, mm, ss)
+            for i, (x, y) in enumerate(ad_coords):
+                add_at_point = max(0, fraction_of_total(x, x_min, x_max)) # TODO: adjust the minimum
+                add_at_time = int(add_at_point * playtime_in_seconds)
+                h, m, s = seconds_to_hhmmss(add_at_time)
+                print(f'Add #{i+1} at: {add_at_time}s ({h:02d}:{m:02d}:{s:02d})')
+        else:
+            print('Playbar not detected')
     else:
         print('Playbar not detected')
 
