@@ -14,6 +14,8 @@ TIME_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789/:
 AD_BREAK_CIRCLE_AREA_RANGE = (20, 35)
 PLAYBAR_AREA_TOP_LEFT = (20, 690) # (40, 890)
 PLAYBAR_AREA_BOT_RIGHT = (1845, 750) # (1875, 930)
+AD_CIRCLE_TOP_LEFT = (50, 985)
+AD_CIRCLE_BOT_RIGHT = (118, 1054)
 
 
 def read_image(image_path):
@@ -202,6 +204,15 @@ def detect_playbar_in_subsample(subsample):
         return None
     return get_lowest_horizontal_line(lines, 900)
 
+
+def detect_ad_circle_in_subsample(subsample):
+    gray = cv2.cvtColor(subsample, cv2.COLOR_BGR2GRAY)
+    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 2.0, 60)
+    if circles is None:
+        return
+    return circles
+
+
 def main_timer_detection():
     IMAGE_PATH_0 = './data/add.PNG'
     IMAGE_PATH_1 = './data/add-ex-1.PNG'
@@ -320,6 +331,27 @@ def time_calibration_ad_circle():
     print('average time:', sum(times) / len(times))
 
 
+def main_ad_circle_subsample():
+    IMAGE = './problematic-frame.png'
+    image = cv2.imread(IMAGE)
+    VIDEO_PATH = './data/20221118_223901.mp4'
+    frame_counter = 0
+    for frame in video_utils.get_frame_for_every_second(VIDEO_PATH, 62):
+        frame_counter += 1
+        image = frame
+        top_x, top_y = AD_CIRCLE_TOP_LEFT
+        bot_x, bot_y = AD_CIRCLE_BOT_RIGHT
+        subsample = image[top_y:bot_y, top_x: bot_x]
+        circle = detect_ad_circle_in_subsample(subsample)
+        if circle is not None:
+            coords = circle.squeeze(0).squeeze(0)
+            x, y, r = coords
+            time = detect_ad_time(subsample, apply_thresholding=True)
+            print(time)
+        else:
+            print('Ad not detected')
+
+
 def time_calibration_playbar_det():
 
     VIDEO_PATH = './data/20221118_225220.mp4'
@@ -363,7 +395,7 @@ def time_calibration_playbar_det():
 
 
 if __name__ == '__main__':
-    main_playbar_ads_detection_subsample()
+    main_ad_circle_subsample()
     # time_calibration_playbar_det()
     # main_timer_detection()
     # keys = [701, 700, 704, 702, 703, 699, 217, 215, 207, 216, 303]
