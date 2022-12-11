@@ -5,9 +5,11 @@ import config
 import video_utils
 
 
-def read_template(template_path):
+def read_template(template_path, reduce_size=False):
     # load the image image, convert it to grayscale, and detect edges
     template = cv2.imread(template_path)
+    if reduce_size:
+        template = cv2.resize(template, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
     template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
     template = cv2.Canny(template, 50, 200)
     template_h, template_w = template.shape[:2]
