@@ -15,4 +15,8 @@ def get_frame_for_every_second(video_path, max_frames=None):
           if frame_id % math.floor(frame_rate) == 0:
               current_frame += 1
               yield frame
+        else:
+            break
     vid_ob.release()
+
+
