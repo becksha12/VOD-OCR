@@ -213,6 +213,50 @@ def detect_ad_circle_in_subsample(subsample):
     return circles
 
 
+def ad_circle_subsample(frame):
+    image = frame
+    top_x, top_y = AD_CIRCLE_TOP_LEFT
+    bot_x, bot_y = AD_CIRCLE_BOT_RIGHT
+    subsample = image[top_y:bot_y, top_x: bot_x]
+    circle = detect_ad_circle_in_subsample(subsample)
+    if circle is not None:
+        coords = circle.squeeze(0).squeeze(0)
+        x, y, r = coords
+        time = detect_ad_time(subsample, apply_thresholding=True)
+        return time
+    return None
+
+
+def playbar_ads_detection_subsample(frame):
+    image = frame
+    top_x, top_y = PLAYBAR_AREA_TOP_LEFT
+    bot_x, bot_y = PLAYBAR_AREA_BOT_RIGHT
+    subsample = image[top_y:bot_y, top_x: bot_x]
+    line = detect_playbar_in_subsample(subsample)
+    if line is not None:
+        (x_min, y1), (x_max, y2) = line
+        playtime = pytesseract.image_to_string(subsample, lang='eng', config=TIME_DETECTION_CONFIG)
+        hhmmss = parse_playtime(playtime)
+        if hhmmss is None:
+            return None
+
+        ad_coords = detect_ad_breaks(subsample, y1)
+        ad_times = []
+        if len(ad_coords) != 0:
+            hh, mm, ss = hhmmss
+            playtime_in_seconds = hhmmss_to_seconds(hh, mm, ss)
+            for i, (x, y) in enumerate(ad_coords):
+                add_at_point = max(0, fraction_of_total(x, x_min, x_max))  # TODO: adjust the minimum
+                add_at_time = int(add_at_point * playtime_in_seconds)
+                h, m, s = seconds_to_hhmmss(add_at_time)
+                ad_times.append(f'Add #{i + 1} at: {add_at_time}s ({h:02d}:{m:02d}:{s:02d})')
+            return '\n'.join(ad_times)
+        else:
+            return None
+    else:
+        return
+
+
 def main_timer_detection():
     IMAGE_PATH_0 = './data/add.PNG'
     IMAGE_PATH_1 = './data/add-ex-1.PNG'
@@ -394,12 +438,44 @@ def time_calibration_playbar_det():
     print('avg:', avg)
 
 
+# function for video streaming
+def video_stream():
+    frame_id = cap.get(1)
+    _, frame = cap.read()
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    if frame_id % math.floor(frame_rate) == 0:
+        ad_timer = ad_circle_subsample(frame)
+        if ad_timer is not None:
+            cv2.putText(cv2image, f'Ad timer detected: {ad_timer.strip()}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        else:
+            ad_breaks = playbar_ads_detection_subsample(frame)
+            if ad_breaks is not None:
+                cv2.putText(cv2image, ad_breaks, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
+                            cv2.LINE_AA)
+    img = Image.fromarray(cv2image)
+    imgtk = ImageTk.PhotoImage(image=img)
+    lmain.imgtk = imgtk
+    lmain.configure(image=imgtk)
+    lmain.after(1, video_stream)
+
+
 if __name__ == '__main__':
-    main_ad_circle_subsample()
-    # time_calibration_playbar_det()
-    # main_timer_detection()
-    # keys = [701, 700, 704, 702, 703, 699, 217, 215, 207, 216, 303]
-    # Test pick circles function
-    # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5]]])) == [25, 35, 12.5])
-    # print(pick_bottom_left_circle(np.array([[[25, 35, 12.5], [25, 100, 12.5], [35, 120, 12.5]]])) == [25, 100, 12.5])
-    # print(pick_bottom_left_circle(np.array([[[0, 50, 12.0], [100, 100, 13.6]]])) == [0, 50, 12.0])
+    from tkinter import *
+    from PIL import ImageTk, Image
+
+    VIDEO_PATH = 'data/20221118_223901.mp4'
+
+    root = Tk()
+    # Create a frame
+    app = Frame(root, bg="white")
+    app.grid()
+    # Create a label in the frame
+    lmain = Label(app)
+    lmain.grid()
+
+    cap = cv2.VideoCapture(VIDEO_PATH)
+    frame_rate = cap.get(5)
+
+    video_stream()
+    root.mainloop()
+
