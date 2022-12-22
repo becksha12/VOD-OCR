@@ -4,18 +4,20 @@ import cv2
 import numpy as np
 import pytesseract
 import time
+import string
 
-AD_CIRCLE_COLOR_BOUNDARY_ORANGE = ([60, 123, 205], [100, 145, 255])
+AD_CIRCLE_COLOR_BOUNDARY_ORANGE = ([50, 115, 195], [125, 155, 255])
 AD_CIRCLE_COLOR_BOUNDARY_GRAY = [(40, 40, 40), [55, 55, 55]]
 PLAYBAR_COLOR_BOUNDARY_WHITE = ([253, 253, 253], [255, 255, 255])
 PLAYBAR_COLOR_BOUNDARY_GRAY = ([75, 75, 75], [77, 77, 77])
 DIGIT_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789'
 TIME_DETECTION_CONFIG = '--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789/:'
 AD_BREAK_CIRCLE_AREA_RANGE = (20, 35)
-PLAYBAR_AREA_TOP_LEFT = (20, 690) # (40, 890)
-PLAYBAR_AREA_BOT_RIGHT = (1845, 750) # (1875, 930)
-AD_CIRCLE_TOP_LEFT = (50, 985)
-AD_CIRCLE_BOT_RIGHT = (118, 1054)
+PLAYBAR_AREA_TOP_LEFT = (40, 890) # (20, 690)
+PLAYBAR_AREA_BOT_RIGHT = (1875, 950) # (1845, 750) #
+AD_CIRCLE_TOP_LEFT = (110, 935) # (50, 985)
+AD_CIRCLE_BOT_RIGHT = (220, 1040) # (118, 1054)
+IMAGE_DISPLAY_DOWNSIZE_RATIO = 0.75
 
 
 def read_image(image_path):
@@ -48,8 +50,6 @@ def detect_ad_circle(image, color_boundary_orange, color_boundary_gray):
     orange_mask = detect_color_mask(image, color_boundary_orange)
     gray_mask = detect_color_mask(image, color_boundary_gray)
     mask = cv2.bitwise_xor(orange_mask, gray_mask)
-
-    cv2.imwrite('mask.png', mask)
 
     circles = cv2.HoughCircles(mask, cv2.HOUGH_GRADIENT, 2.0, 60)
     if circles is None:
@@ -95,8 +95,8 @@ def detect_playbar(image, color_boundary_gray, color_boundary_white):
 def detect_ad_breaks(image, playbar_y_coord):
     ad_break_mask = detect_color_mask(image, AD_CIRCLE_COLOR_BOUNDARY_ORANGE)
     ad_break_mask = cv2.bitwise_not(ad_break_mask)
+    cv2.imwrite('ad-breaks-mask.png', ad_break_mask)
     # Find contours
-    # findcontours
     cnts = cv2.findContours(ad_break_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[-2]
     ad_coordinates = []
     for cnt in cnts:
@@ -170,14 +170,34 @@ def get_playbar_coordinates(playbar_mask):
     return lowest_horizontal_line
 
 
+def post_process_time_string(time_string):
+    start = 0
+    while time_string[start] not in string.digits:
+        start += 1
+    end = len(time_string) - 1
+    while time_string[end] not in string.digits:
+        end -= 1
+    return time_string[start:end+1]
+
+
 def parse_playtime(time_string):
     if len(time_string) == 0:
         return
     if time_string is None:
         return
+    time_strings = time_string.split('/')
+    if len(time_strings) != 2:
+        return None
     current_time, total_time = time_string.split('/')
-    hh, mm, ss, *_ = total_time.split(':')
+    if len(total_time) < 3:
+        return None
+    total_time = post_process_time_string(total_time)
+    tot_time_splits = total_time.split(':')
+    if len(tot_time_splits) < 3:
+        return None
+    hh, mm, ss, *_ = tot_time_splits
     return int(hh), int(mm), int(ss)
+
 
 
 def hhmmss_to_seconds(hh, mm, ss):
@@ -196,9 +216,9 @@ def fraction_of_total(point, start, end):
     return (float(point) - start) / (float(end) - start)
 
 
-def detect_playbar_in_subsample(subsample):
-    mask = detect_playbar(subsample, PLAYBAR_COLOR_BOUNDARY_GRAY, PLAYBAR_COLOR_BOUNDARY_WHITE)
-    # cv2.imwrite('subsample-mask.png', mask)
+def detect_playbar_in_subsample(mask):
+    # mask = detect_playbar(subsample, PLAYBAR_COLOR_BOUNDARY_GRAY, PLAYBAR_COLOR_BOUNDARY_WHITE)
+    cv2.imwrite('subsam-mask.png', mask)
     lines = cv2.HoughLinesP(mask, rho=1, theta=math.pi / 2, threshold=20)
     if lines is None:
         return None
@@ -218,6 +238,7 @@ def ad_circle_subsample(frame):
     top_x, top_y = AD_CIRCLE_TOP_LEFT
     bot_x, bot_y = AD_CIRCLE_BOT_RIGHT
     subsample = image[top_y:bot_y, top_x: bot_x]
+    cv2.imwrite('ad-circle-subsam.png', subsample)
     circle = detect_ad_circle_in_subsample(subsample)
     if circle is not None:
         coords = circle.squeeze(0).squeeze(0)
@@ -232,10 +253,15 @@ def playbar_ads_detection_subsample(frame):
     top_x, top_y = PLAYBAR_AREA_TOP_LEFT
     bot_x, bot_y = PLAYBAR_AREA_BOT_RIGHT
     subsample = image[top_y:bot_y, top_x: bot_x]
-    line = detect_playbar_in_subsample(subsample)
+    # cv2.imwrite('playbar_ads_detection_subsam.png', subsample)
+    gray = cv2.cvtColor(subsample, cv2.COLOR_BGR2GRAY)
+    _, mask = cv2.threshold(gray, 100, 255, cv2.THRESH_TOZERO)
+    line = detect_playbar_in_subsample(mask)
+    # print('line:', line)
     if line is not None:
         (x_min, y1), (x_max, y2) = line
-        playtime = pytesseract.image_to_string(subsample, lang='eng', config=TIME_DETECTION_CONFIG)
+        playtime = pytesseract.image_to_string(mask, lang='eng', config=TIME_DETECTION_CONFIG)
+        # print('playtime:', playtime)
         hhmmss = parse_playtime(playtime)
         if hhmmss is None:
             return None
@@ -440,30 +466,42 @@ def time_calibration_playbar_det():
 
 # function for video streaming
 def video_stream():
+    global count
     frame_id = cap.get(1)
     _, frame = cap.read()
-    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-    if frame_id % math.floor(frame_rate) == 0:
-        ad_timer = ad_circle_subsample(frame)
-        if ad_timer is not None:
-            cv2.putText(cv2image, f'Ad timer detected: {ad_timer.strip()}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            ad_breaks = playbar_ads_detection_subsample(frame)
-            if ad_breaks is not None:
-                cv2.putText(cv2image, ad_breaks, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
-                            cv2.LINE_AA)
-    img = Image.fromarray(cv2image)
-    imgtk = ImageTk.PhotoImage(image=img)
-    lmain.imgtk = imgtk
-    lmain.configure(image=imgtk)
-    lmain.after(1, video_stream)
+    if frame is not None:
+        cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if frame_id % math.floor(frame_rate // 2) == 0:
+            cv2.imwrite(f'demo_2_frames/demo_{count:06d}.png', frame)
+            ad_timer = ad_circle_subsample(frame)
+            if ad_timer is not None:
+                # cv2.putText(cv2image, f'Ad timer detected: {ad_timer.strip()}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                time_detected = ad_timer.strip()
+                if len(time_detected) > 0:
+                    print(f'Ad timer detected: {time_detected}')
+            else:
+                ad_breaks = playbar_ads_detection_subsample(frame)
+                if ad_breaks is not None:
+                    # cv2.putText(cv2image, ad_breaks, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
+                    #             cv2.LINE_AA)
+                    print('Ad Breaks:')
+                    print(ad_breaks)
+            count += 1
+
+        cv2image = cv2.resize(cv2image, None, fx=IMAGE_DISPLAY_DOWNSIZE_RATIO, fy=IMAGE_DISPLAY_DOWNSIZE_RATIO, interpolation=cv2.INTER_AREA)
+        img = Image.fromarray(cv2image)
+        imgtk = ImageTk.PhotoImage(image=img)
+        lmain.imgtk = imgtk
+        lmain.configure(image=imgtk)
+        lmain.after(1, video_stream)
 
 
 if __name__ == '__main__':
     from tkinter import *
     from PIL import ImageTk, Image
 
-    VIDEO_PATH = 'data/20221118_223901.mp4'
+    VIDEO_PATH = 'data/rec_14_test.mp4'
+    count = 1
 
     root = Tk()
     # Create a frame
@@ -478,4 +516,8 @@ if __name__ == '__main__':
 
     video_stream()
     root.mainloop()
+    # FRAME_PATH = 'demo_2_frames/demo_000125.png'
+    # image = cv2.imread(FRAME_PATH)
+    # # playbar_ads_detection_subsample(image)
+    # print(ad_circle_subsample(image))
 
